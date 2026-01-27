@@ -1,8 +1,9 @@
-﻿const express = require("express");
+﻿// index.js (backend) — GÜNCEL TAM KOD (undici yok, fail-fast timeout var, optional cache var)
+
+const express = require("express");
 const cors = require("cors");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
@@ -16,49 +17,25 @@ app.get("/health", (req, res) => {
     res.json({ ok: true, service: "tedarik-analiz-backend-clean" });
 });
 
-// küçük yardımcı: sleep
+// küçük yardımcı
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// fetch + timeout + retry (undici YOK)
-async function fetchWithTimeoutAndRetry(
-    url,
-    options,
-    { timeoutMs = 120_000, retries = 2, retryDelayMs = 1000 } = {}
-) {
-    let lastErr;
+// ✅ basit memory cache (aynı sorguyu tekrar tekrar Odak'a atmasın)
+const cache = new Map(); // key -> { ts, value }
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 dk
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        const controller = new AbortController();
-        const t = setTimeout(() => controller.abort(), timeoutMs);
+function cacheKey({ startDate, endDate, userId }) {
+    return `${userId}|${startDate}|${endDate}`;
+}
 
-        try {
-            const res = await fetch(url, {
-                ...options,
-                signal: controller.signal,
-            });
-            clearTimeout(t);
-            return res;
-        } catch (err) {
-            clearTimeout(t);
-            lastErr = err;
-
-            const msg = String(err?.message || "").toLowerCase();
-            const retryable =
-                msg.includes("fetch failed") ||
-                msg.includes("abort") ||
-                msg.includes("timeout") ||
-                msg.includes("network");
-
-            if (attempt < retries && retryable) {
-                await sleep(retryDelayMs * (attempt + 1));
-                continue;
-            }
-
-            throw err;
-        }
+async function fetchOdakWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(t);
     }
-
-    throw lastErr;
 }
 
 // 🔥 ODAK API PROXY
@@ -83,24 +60,53 @@ app.post("/tmsorders", async (req, res) => {
             });
         }
 
-        const upstreamUrl =
-            "https://api.odaklojistik.com.tr/api/tmsorders/getall";
+        // ✅ Cache kontrol
+        const key = cacheKey({ startDate, endDate, userId });
+        const hit = cache.get(key);
+        if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
+            return res.json({ rid, ok: true, data: hit.value, cached: true });
+        }
 
-        const upstreamRes = await fetchWithTimeoutAndRetry(
-            upstreamUrl,
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: token, // gerekirse: `Bearer ${token}`
-                },
-                body: JSON.stringify({ startDate, endDate, userId }),
+        const upstreamUrl = "https://api.odaklojistik.com.tr/api/tmsorders/getall";
+
+        // ⚠️ Token formatı: Odak Bearer istiyorsa bu doğru.
+        // Eğer Odak direkt token istiyorsa alt satırı `Authorization: token` yap.
+        const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+
+        const options = {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: authHeader,
             },
-            {
-                timeoutMs: 120_000,
-                retries: 2,
+            body: JSON.stringify({ startDate, endDate, userId }),
+        };
+
+        // ✅ Fail-fast timeout: Render gateway 502 basmadan biz kontrollü hata dönelim
+        const TIMEOUT_MS = 25_000; // 25 sn
+        const RETRIES = 1; // 1 retry yeterli (toplam max ~50 sn)
+
+        let upstreamRes = null;
+        let lastErr = null;
+
+        for (let attempt = 0; attempt <= RETRIES; attempt++) {
+            try {
+                upstreamRes = await fetchOdakWithTimeout(upstreamUrl, options, TIMEOUT_MS);
+                lastErr = null;
+                break;
+            } catch (e) {
+                lastErr = e;
+                if (attempt < RETRIES) await sleep(600);
             }
-        );
+        }
+
+        if (!upstreamRes) {
+            return res.status(504).json({
+                rid,
+                error: "Odak timeout / erişilemiyor",
+                message: lastErr?.message || "fetch failed",
+            });
+        }
 
         const text = await upstreamRes.text();
 
@@ -111,6 +117,7 @@ app.post("/tmsorders", async (req, res) => {
             return res.status(502).json({
                 rid,
                 error: "Odak JSON dönmedi",
+                status: upstreamRes.status,
                 raw: text.slice(0, 800),
             });
         }
@@ -124,10 +131,12 @@ app.post("/tmsorders", async (req, res) => {
             });
         }
 
+        // ✅ cache yaz
+        cache.set(key, { ts: Date.now(), value: data });
+
         return res.json({ rid, ok: true, data });
     } catch (err) {
         console.error("❌ ODAK API HATASI:", err);
-
         return res.status(500).json({
             rid,
             error: "Backend exception",
@@ -137,6 +146,4 @@ app.post("/tmsorders", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () =>
-    console.log("🚀 Server listening on port", PORT)
-);
+app.listen(PORT, () => console.log("🚀 Server listening on port", PORT));
