@@ -1,4 +1,4 @@
-﻿// index.js (backend) — GÜNCEL TAM KOD (undici yok, fail-fast timeout var, optional cache var)
+﻿// index.js — GÜNCEL TAM KOD (week endpoint eklendi, tek handler, fail-fast timeout, optional cache)
 
 const express = require("express");
 const cors = require("cors");
@@ -38,8 +38,8 @@ async function fetchOdakWithTimeout(url, options, timeoutMs) {
     }
 }
 
-// 🔥 ODAK API PROXY
-app.post("/tmsorders", async (req, res) => {
+// 🔥 ODAK API PROXY (tek handler: hem /tmsorders hem /tmsorders/week bunu kullanır)
+async function tmsordersHandler(req, res) {
     const rid = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
@@ -143,7 +143,24 @@ app.post("/tmsorders", async (req, res) => {
             message: err?.message || "fetch failed",
         });
     }
+}
+
+// ✅ Her iki endpoint de çalışsın (frontend /tmsorders/week çağırıyor)
+app.post("/tmsorders", tmsordersHandler);
+app.post("/tmsorders/week", tmsordersHandler);
+
+// (Opsiyonel) debug için route listesi
+app.get("/routes", (req, res) => {
+    res.json({
+        routes: [
+            "GET /",
+            "GET /health",
+            "POST /tmsorders",
+            "POST /tmsorders/week",
+        ],
+    });
 });
 
+// Port
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("🚀 Server listening on port", PORT));
