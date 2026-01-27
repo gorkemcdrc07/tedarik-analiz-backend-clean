@@ -9,7 +9,6 @@ const app = express();
    ✅ CORS (PRE-FLIGHT FIX)
    ======================= */
 
-// Prod frontend domainin varsa buraya ekle
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -17,9 +16,8 @@ const ALLOWED_ORIGINS = [
 ];
 
 const corsOptions = {
-  origin: function (origin, cb) {
-    // origin yoksa (Postman/Server-to-server) izin ver
-    if (!origin) return cb(null, true);
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // server-side / postman
     if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     return cb(new Error("Not allowed by CORS: " + origin));
   },
@@ -31,8 +29,9 @@ const corsOptions = {
 
 // ✅ önce CORS
 app.use(cors(corsOptions));
-// ✅ sonra preflight
-app.options("*", cors(corsOptions));
+
+// ✅ sonra preflight (⚠️ "*" yerine RegExp!)
+app.options(/.*/, cors(corsOptions));
 
 // JSON body
 app.use(express.json({ limit: "2mb" }));
@@ -51,10 +50,16 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, service: "tedarik-analiz-backend-clean" });
 });
 
-// (Opsiyonel) debug için route listesi
+// Debug routes
 app.get("/routes", (req, res) => {
   res.json({
-    routes: ["GET /", "GET /health", "GET /routes", "POST /tmsorders", "POST /tmsorders/week"],
+    routes: [
+      "GET /",
+      "GET /health",
+      "GET /routes",
+      "POST /tmsorders",
+      "POST /tmsorders/week",
+    ],
   });
 });
 
@@ -127,9 +132,8 @@ async function tmsordersHandler(req, res) {
       body: JSON.stringify({ startDate, endDate, userId }),
     };
 
-    // ✅ Fail-fast timeout
-    const TIMEOUT_MS = 25_000; // 25 sn
-    const RETRIES = 1; // toplam max ~50 sn
+    const TIMEOUT_MS = 25_000;
+    const RETRIES = 1;
 
     let upstreamRes = null;
     let lastErr = null;
@@ -176,7 +180,6 @@ async function tmsordersHandler(req, res) {
       });
     }
 
-    // ✅ cache yaz
     cache.set(key, { ts: Date.now(), value: data });
 
     return res.json({ rid, ok: true, data });
@@ -190,7 +193,7 @@ async function tmsordersHandler(req, res) {
   }
 }
 
-// ✅ Frontend /tmsorders/week çağırıyor: ikisi de çalışsın
+// ✅ iki endpoint de çalışsın
 app.post("/tmsorders", tmsordersHandler);
 app.post("/tmsorders/week", tmsordersHandler);
 
