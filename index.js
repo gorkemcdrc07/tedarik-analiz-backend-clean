@@ -1,4 +1,4 @@
-﻿// index.js — GÜNCEL TAM KOD (CORS preflight fix + /tmsorders/week)
+﻿// index.js — GÜNCEL TAM KOD (Express 5 uyumlu CORS preflight fix + /tmsorders + /tmsorders/week)
 
 const express = require("express");
 const cors = require("cors");
@@ -9,24 +9,23 @@ const app = express();
    ✅ CORS (PRE-FLIGHT FIX)
    ======================= */
 
-// ✅ BURAYA VERCEL DOMAIN'İNİ EKLEDİM
 const ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://analiz-pearl.vercel.app",
+    "https://analiz-pearl.vercel.app", // ✅ Vercel
 ];
 
 const corsOptions = {
     origin: (origin, cb) => {
-        // origin yoksa (Postman / server-to-server) izin ver
+        // origin yoksa (Postman / server-side) izin ver
         if (!origin) return cb(null, true);
 
+        // allowlist
         if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
 
-        // ❗ Burada error dönmek yerine "false" dönmek daha sağlıklı
-        // Çünkü error dönünce bazen header basılmadan kapanıyor.
+        // ❗ error fırlatma -> bazı ortamlarda header basılmadan kapanır
         return cb(null, false);
     },
     methods: ["GET", "POST", "OPTIONS"],
@@ -38,8 +37,8 @@ const corsOptions = {
 // ✅ önce CORS
 app.use(cors(corsOptions));
 
-// ✅ sonra preflight garanti
-app.options("*", cors(corsOptions));
+// ✅ Express 5 + path-to-regexp uyumlu preflight ( "*" KULLANMA! )
+app.options(/.*/, cors(corsOptions));
 
 // JSON body
 app.use(express.json({ limit: "2mb" }));
@@ -58,16 +57,23 @@ app.get("/health", (req, res) => {
 
 app.get("/routes", (req, res) => {
     res.json({
-        routes: ["GET /", "GET /health", "GET /routes", "POST /tmsorders", "POST /tmsorders/week"],
+        routes: [
+            "GET /",
+            "GET /health",
+            "GET /routes",
+            "POST /tmsorders",
+            "POST /tmsorders/week",
+        ],
+        allowedOrigins: ALLOWED_ORIGINS,
     });
 });
 
-// küçük yardımcı
+/* =======================
+   Helpers
+   ======================= */
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* =======================
-   ✅ basit memory cache
-   ======================= */
 const cache = new Map(); // key -> { ts, value }
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 dk
 
@@ -75,7 +81,7 @@ function cacheKey({ startDate, endDate, userId }) {
     return `${userId}|${startDate}|${endDate}`;
 }
 
-async function fetchOdakWithTimeout(url, options, timeoutMs) {
+async function fetchWithTimeout(url, options, timeoutMs) {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -88,6 +94,7 @@ async function fetchOdakWithTimeout(url, options, timeoutMs) {
 /* =======================
    🔥 ODAK API PROXY
    ======================= */
+
 async function tmsordersHandler(req, res) {
     const rid = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -95,23 +102,32 @@ async function tmsordersHandler(req, res) {
         const { startDate, endDate, userId } = req.body || {};
 
         if (!startDate || !endDate || userId == null) {
-            return res.status(400).json({ rid, error: "startDate, endDate ve userId zorunlu" });
+            return res.status(400).json({
+                rid,
+                ok: false,
+                error: "startDate, endDate ve userId zorunlu",
+            });
         }
 
         const token = process.env.ODAK_API_TOKEN;
         if (!token) {
-            return res.status(500).json({ rid, error: "ODAK_API_TOKEN Render env'de yok" });
+            return res.status(500).json({
+                rid,
+                ok: false,
+                error: "ODAK_API_TOKEN Render env'de yok",
+            });
         }
 
-        // ✅ Cache kontrol
+        // ✅ Cache hit
         const key = cacheKey({ startDate, endDate, userId });
         const hit = cache.get(key);
         if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
-            return res.json({ rid, ok: true, data: hit.value, cached: true });
+            return res.json({ rid, ok: true, cached: true, data: hit.value });
         }
 
         const upstreamUrl = "https://api.odaklojistik.com.tr/api/tmsorders/getall";
 
+        // Odak token formatı: Bearer gerekiyorsa böyle, değilse token direkt gönder
         const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
 
         const options = {
@@ -131,7 +147,7 @@ async function tmsordersHandler(req, res) {
 
         for (let attempt = 0; attempt <= RETRIES; attempt++) {
             try {
-                upstreamRes = await fetchOdakWithTimeout(upstreamUrl, options, TIMEOUT_MS);
+                upstreamRes = await fetchWithTimeout(upstreamUrl, options, TIMEOUT_MS);
                 lastErr = null;
                 break;
             } catch (e) {
@@ -143,6 +159,7 @@ async function tmsordersHandler(req, res) {
         if (!upstreamRes) {
             return res.status(504).json({
                 rid,
+                ok: false,
                 error: "Odak timeout / erişilemiyor",
                 message: lastErr?.message || "fetch failed",
             });
@@ -156,6 +173,7 @@ async function tmsordersHandler(req, res) {
         } catch {
             return res.status(502).json({
                 rid,
+                ok: false,
                 error: "Odak JSON dönmedi",
                 status: upstreamRes.status,
                 raw: text.slice(0, 800),
@@ -165,6 +183,7 @@ async function tmsordersHandler(req, res) {
         if (!upstreamRes.ok) {
             return res.status(502).json({
                 rid,
+                ok: false,
                 error: "Odak API hata döndü",
                 status: upstreamRes.status,
                 data,
@@ -173,23 +192,25 @@ async function tmsordersHandler(req, res) {
 
         cache.set(key, { ts: Date.now(), value: data });
 
-        return res.json({ rid, ok: true, data });
+        return res.json({ rid, ok: true, cached: false, data });
     } catch (err) {
-        console.error("❌ ODAK API HATASI:", err);
+        console.error("❌ BACKEND EXCEPTION:", err);
         return res.status(500).json({
-            rid,
+            rid: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            ok: false,
             error: "Backend exception",
-            message: err?.message || "fetch failed",
+            message: err?.message || String(err),
         });
     }
 }
 
-// ✅ iki endpoint de çalışsın
+// ✅ iki endpoint de aynı handler
 app.post("/tmsorders", tmsordersHandler);
 app.post("/tmsorders/week", tmsordersHandler);
 
 /* =======================
    START
    ======================= */
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log("🚀 Server listening on port", PORT));
