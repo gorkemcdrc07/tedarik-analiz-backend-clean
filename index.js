@@ -14,7 +14,8 @@ const ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://analiz-pearl.vercel.app", // ✅ Vercel
+    "https://analiz-pearl.vercel.app",
+    "https://analiz-v2.vercel.app", // 👈 BUNU EKLE
 ];
 
 const corsOptions = {
