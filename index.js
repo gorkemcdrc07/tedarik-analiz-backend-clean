@@ -10,12 +10,21 @@ const app = express();
    ======================= */
 
 const ALLOWED_ORIGINS = [
+    // ✅ CRA default
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+
+    // ✅ senin local (hata buradan geliyor)
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+
+    // ✅ Vite
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+
+    // ✅ prod
     "https://analiz-pearl.vercel.app",
-    "https://analiz-v2.vercel.app", // 👈 BUNU EKLE
+    "https://analiz-v2.vercel.app",
 ];
 
 const corsOptions = {
@@ -23,10 +32,10 @@ const corsOptions = {
         // origin yoksa (Postman / server-side) izin ver
         if (!origin) return cb(null, true);
 
-        // allowlist
         if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
 
         // ❗ error fırlatma -> bazı ortamlarda header basılmadan kapanır
+        console.warn("⛔ CORS blocked origin:", origin);
         return cb(null, false);
     },
     methods: ["GET", "POST", "OPTIONS"],
