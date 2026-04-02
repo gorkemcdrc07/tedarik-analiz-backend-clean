@@ -10,31 +10,21 @@ const app = express();
    ======================= */
 
 const ALLOWED_ORIGINS = [
-    // ✅ CRA default
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-
-    // ✅ senin local (hata buradan geliyor)
     "http://localhost:3001",
     "http://127.0.0.1:3001",
-
-    // ✅ Vite
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-
-    // ✅ prod
     "https://analiz-pearl.vercel.app",
     "https://analiz-v2.vercel.app",
 ];
 
 const corsOptions = {
     origin: (origin, cb) => {
-        // origin yoksa (Postman / server-side) izin ver
         if (!origin) return cb(null, true);
-
         if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
 
-        // ❗ error fırlatma -> bazı ortamlarda header basılmadan kapanır
         console.warn("⛔ CORS blocked origin:", origin);
         return cb(null, false);
     },
@@ -44,13 +34,8 @@ const corsOptions = {
     maxAge: 86400,
 };
 
-// ✅ önce CORS
 app.use(cors(corsOptions));
-
-// ✅ Express 5 + path-to-regexp uyumlu preflight ( "*" KULLANMA! )
 app.options(/.*/, cors(corsOptions));
-
-// JSON body
 app.use(express.json({ limit: "2mb" }));
 
 /* =======================
@@ -84,8 +69,8 @@ app.get("/routes", (req, res) => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const cache = new Map(); // key -> { ts, value }
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 dk
+const cache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function cacheKey({ startDate, endDate, userId }) {
     return `${userId}|${startDate}|${endDate}`;
@@ -99,6 +84,16 @@ async function fetchWithTimeout(url, options, timeoutMs) {
     } finally {
         clearTimeout(t);
     }
+}
+
+function extractFirstItem(data) {
+    return (
+        data?.data?.[0] ||
+        data?.Data?.[0] ||
+        data?.items?.[0] ||
+        data?.[0] ||
+        null
+    );
 }
 
 /* =======================
@@ -128,7 +123,6 @@ async function tmsordersHandler(req, res) {
             });
         }
 
-        // ✅ Cache hit
         const key = cacheKey({ startDate, endDate, userId });
         const hit = cache.get(key);
         if (hit && Date.now() - hit.ts < CACHE_TTL_MS) {
@@ -136,8 +130,6 @@ async function tmsordersHandler(req, res) {
         }
 
         const upstreamUrl = "https://api.odaklojistik.com.tr/api/tmsorders/getall";
-
-        // Odak token formatı: Bearer gerekiyorsa böyle, değilse token direkt gönder
         const authHeader = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
 
         const options = {
@@ -180,6 +172,15 @@ async function tmsordersHandler(req, res) {
         let data;
         try {
             data = text ? JSON.parse(text) : null;
+
+            const firstItem = extractFirstItem(data);
+
+            console.log("🔍 UPSTREAM FIRST ITEM:", firstItem);
+
+            console.log("🔍 LOADING ALANLARI:", {
+                TMSLoadingDocumentPrintedDate: firstItem?.TMSLoadingDocumentPrintedDate,
+                TMSLoadingDocumentPrintedBy: firstItem?.TMSLoadingDocumentPrintedBy,
+            });
         } catch {
             return res.status(502).json({
                 rid,
@@ -214,7 +215,6 @@ async function tmsordersHandler(req, res) {
     }
 }
 
-// ✅ iki endpoint de aynı handler
 app.post("/tmsorders", tmsordersHandler);
 app.post("/tmsorders/week", tmsordersHandler);
 
