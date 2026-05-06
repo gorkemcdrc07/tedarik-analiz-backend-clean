@@ -55,7 +55,6 @@ const transporter = nodemailer.createTransport({
     port: 587,
     secure: false,
     requireTLS: true,
-    family: 4,
     pool: false,
     connectionTimeout: 180000,
     greetingTimeout: 180000,
@@ -65,10 +64,13 @@ const transporter = nodemailer.createTransport({
         pass: process.env.MAIL_PASS,
     },
     tls: {
-        family: 4,
         rejectUnauthorized: false,
     },
+    lookup: (hostname, options, callback) => {
+        dns.lookup(hostname, { ...options, family: 4 }, callback);
+    },
 });
+
 const LAST_PAYLOAD_FILE = path.join(__dirname, "last-mail-payload.json");
 
 const sonPayloadKaydet = (payload) => {
