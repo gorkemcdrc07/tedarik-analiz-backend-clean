@@ -8,6 +8,9 @@ const puppeteer = require("puppeteer");
 const cron = require("node-cron");
 const fs = require("fs");
 const path = require("path");
+const dns = require("dns");
+
+dns.setDefaultResultOrder("ipv4first");
 
 dotenv.config();
 
@@ -49,8 +52,10 @@ app.use(express.json({ limit: "10mb" }));
 
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    family: 4,
     connectionTimeout: 120000,
     greetingTimeout: 120000,
     socketTimeout: 120000,
