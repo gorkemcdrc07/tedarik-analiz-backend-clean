@@ -512,7 +512,9 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
             const html = buildHtml(effectiveSummaries, data, bolge);
 
             browser = await puppeteer.launch({
-                executablePath: "/usr/bin/chromium",
+                executablePath:
+                    process.env.PUPPETEER_EXECUTABLE_PATH ||
+                    "/opt/render/.cache/puppeteer/chrome/linux-147.0.7727.57/chrome-linux64/chrome",
                 headless: true,
                 args: [
                     "--no-sandbox",
