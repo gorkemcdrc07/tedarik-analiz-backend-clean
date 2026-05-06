@@ -523,8 +523,12 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
             const page = await browser.newPage();
 
             await page.setContent(html, {
-                waitUntil: "networkidle0",
+                waitUntil: "domcontentloaded",
+                timeout: 120000,
             });
+
+            await page.emulateMediaType("screen");
+            await new Promise((resolve) => setTimeout(resolve, 500));
 
             const pdfBuffer = await page.pdf({
                 format: "A4",
