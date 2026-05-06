@@ -51,10 +51,9 @@ app.use(express.json({ limit: "10mb" }));
 ======================= */
 
 const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    host: "74.125.133.108",
+    port: 465,
+    secure: true,
     pool: false,
     connectionTimeout: 180000,
     greetingTimeout: 180000,
@@ -65,9 +64,7 @@ const transporter = nodemailer.createTransport({
     },
     tls: {
         rejectUnauthorized: false,
-    },
-    lookup: (hostname, options, callback) => {
-        dns.lookup(hostname, { ...options, family: 4 }, callback);
+        servername: "smtp.gmail.com",
     },
 });
 
