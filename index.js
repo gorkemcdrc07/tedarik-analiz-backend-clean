@@ -2,7 +2,6 @@
 
 const express = require("express");
 const cors = require("cors");
-const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
 const puppeteer = require("puppeteer");
 const cron = require("node-cron");
@@ -50,24 +49,39 @@ app.use(express.json({ limit: "10mb" }));
    MAIL AYARLARI
 ======================= */
 
-const transporter = nodemailer.createTransport({
-    host: "74.125.133.108",
-    port: 465,
-    secure: true,
-    pool: false,
-    connectionTimeout: 180000,
-    greetingTimeout: 180000,
-    socketTimeout: 180000,
-    auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-    },
-    tls: {
-        rejectUnauthorized: false,
-        servername: "smtp.gmail.com",
-    },
-});
+const sendMailWithResend = async ({ to, cc, subject, text, attachments }) => {
+    const body = {
+        from: "Odak Lojistik <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        text,
+    };
 
+    if (cc && cc.length > 0) body.cc = cc;
+
+    if (attachments && attachments.length > 0) {
+        body.attachments = attachments.map(a => ({
+            filename: a.filename,
+            content: Buffer.from(a.content).toString("base64"),
+        }));
+    }
+
+    const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Resend hata: ${err}`);
+    }
+
+    return await res.json();
+};
 
 const LAST_PAYLOAD_FILE = path.join(__dirname, "last-mail-payload.json");
 
@@ -561,27 +575,18 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
 
             console.log("📨 SMTP ile mail gönderiliyor:", email);
 
-            const info = await transporter.sendMail({
-                from: `"Odak Lojistik" <${process.env.MAIL_USER}>`,
+            const info = await sendMailWithResend({
                 to: email,
-                cc: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : undefined,
+                cc: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails : [],
                 subject: `📊 ${bolge || "Bölge"} | Sefer Analiz Raporu`,
-                text: `Değerli Kullanıcılar,
-
-İlgili tarih aralığında oluşturmuş olduğunuz seferlere ait kontrollerinizi yapmanızı rica ederiz.
-
-Seferlerinizde eksik, fazla veya hatalı bir durum tespit etmeniz halinde müşteri hizmetleri birimimiz ile iletişime geçebilirsiniz.
-
-Bilginize sunar, iyi günler dileriz.`,
+                text: `Değerli Kullanıcılar,\n\nİlgili tarih aralığında oluşturmuş olduğunuz seferlere ait kontrollerinizi yapmanızı rica ederiz.\n\nSeferlerinizde eksik, fazla veya hatalı bir durum tespit etmeniz halinde müşteri hizmetleri birimimiz ile iletişime geçebilirsiniz.\n\nBilginize sunar, iyi günler dileriz.`,
                 attachments: [
                     {
                         filename: `sefer-analiz-raporu-${slugify(bolge || "bolge")}.pdf`,
                         content: pdfBuffer,
-                        contentType: "application/pdf",
                     },
                 ],
             });
-
             results.push({
                 email,
                 ok: true,
