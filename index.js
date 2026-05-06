@@ -51,7 +51,11 @@ app.use(express.json({ limit: "10mb" }));
 ======================= */
 
 const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    family: 4,
     pool: false,
     connectionTimeout: 180000,
     greetingTimeout: 180000,
@@ -60,8 +64,11 @@ const transporter = nodemailer.createTransport({
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
     },
+    tls: {
+        family: 4,
+        rejectUnauthorized: false,
+    },
 });
-
 const LAST_PAYLOAD_FILE = path.join(__dirname, "last-mail-payload.json");
 
 const sonPayloadKaydet = (payload) => {
