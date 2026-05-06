@@ -511,15 +511,14 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
         for (const item of mailPayload) {
             const { email, ccEmails = [], data = [], summaries = [] } = item || {};
 
-            if (!email || !Array.isArray(data) || data.length === 0) {
+            if (!email) {
                 results.push({
-                    email: email || "-",
+                    email: "-",
                     ok: false,
-                    message: "Email veya veri bulunamadı.",
+                    message: "Email bulunamadı.",
                 });
                 continue;
             }
-
             const effectiveSummaries =
                 summaries.length > 0
                     ? summaries
