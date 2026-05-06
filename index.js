@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
-const puppeteer = require("puppeteer-core");
+const puppeteer = require("puppeteer");
 const cron = require("node-cron");
 const fs = require("fs");
 const path = require("path");
@@ -512,9 +512,6 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
             const html = buildHtml(effectiveSummaries, data, bolge);
 
             browser = await puppeteer.launch({
-                executablePath:
-                    process.env.PUPPETEER_EXECUTABLE_PATH ||
-                    "/opt/render/.cache/puppeteer/chrome/linux-147.0.7727.57/chrome-linux64/chrome",
                 headless: true,
                 args: [
                     "--no-sandbox",
