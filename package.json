@@ -4,10 +4,10 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "postinstall": "node node_modules/puppeteer/install.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
   "dependencies": {
     "cors": "^2.8.6",
