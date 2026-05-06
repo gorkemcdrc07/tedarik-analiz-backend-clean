@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const dotenv = require("dotenv");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 const cron = require("node-cron");
 const fs = require("fs");
 const path = require("path");
@@ -512,6 +512,7 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
             const html = buildHtml(effectiveSummaries, data, bolge);
 
             browser = await puppeteer.launch({
+                executablePath: "/usr/bin/chromium",
                 headless: true,
                 args: [
                     "--no-sandbox",
@@ -546,7 +547,13 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
                 to: email,
                 cc: Array.isArray(ccEmails) && ccEmails.length > 0 ? ccEmails.join(",") : undefined,
                 subject: `📊 ${bolge || "Bölge"} | Sefer Analiz Raporu`,
-                text: "Sefer analiz raporu PDF olarak ekte yer almaktadır.",
+                text: `Değerli Kullanıcılar,
+
+İlgili tarih aralığında oluşturmuş olduğunuz seferlere ait kontrollerinizi yapmanızı rica ederiz.
+
+Seferlerinizde eksik, fazla veya hatalı bir durum tespit etmeniz halinde müşteri hizmetleri birimimiz ile iletişime geçebilirsiniz.
+
+Bilginize sunar, iyi günler dileriz.`,
                 attachments: [
                     {
                         filename: `sefer-analiz-raporu-${slugify(bolge || "bolge")}.pdf`,
