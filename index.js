@@ -51,22 +51,17 @@ app.use(express.json({ limit: "10mb" }));
 ======================= */
 
 const transporter = nodemailer.createTransport({
-    host: "142.250.102.109",
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    family: 4,
-    connectionTimeout: 120000,
-    greetingTimeout: 120000,
-    socketTimeout: 120000,
-    tls: {
-        servername: "smtp.gmail.com",
-    },
+    service: "gmail",
+    pool: false,
+    connectionTimeout: 180000,
+    greetingTimeout: 180000,
+    socketTimeout: 180000,
     auth: {
         user: process.env.MAIL_USER,
         pass: process.env.MAIL_PASS,
     },
 });
+
 const LAST_PAYLOAD_FILE = path.join(__dirname, "last-mail-payload.json");
 
 const sonPayloadKaydet = (payload) => {
@@ -556,6 +551,8 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
 
             await browser.close();
             browser = null;
+
+            console.log("📨 SMTP ile mail gönderiliyor:", email);
 
             const info = await transporter.sendMail({
                 from: `"Odak Lojistik" <${process.env.MAIL_USER}>`,
