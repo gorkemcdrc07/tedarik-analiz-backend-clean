@@ -68,6 +68,7 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+
 const LAST_PAYLOAD_FILE = path.join(__dirname, "last-mail-payload.json");
 
 const sonPayloadKaydet = (payload) => {
