@@ -187,22 +187,16 @@ const statusClass = (r) => {
 };
 
 const hesaplaOzet = (summary = {}, rows = []) => {
-    const talep = rows.length;
-
-    const tedarik = rows.filter((r) => {
-        const s = statusText(r);
-        return s === "Zamanında" || s === "Geç Tedarik";
-    }).length;
-
-    const gec_tedarik = rows.filter((r) => statusText(r) === "Geç Tedarik").length;
-    const edilmeyen = rows.filter((r) => statusText(r) === "Yükleme Tarihi Yok").length;
-
     return {
         ...summary,
-        talep,
-        tedarik,
-        edilmeyen,
-        gec_tedarik,
+        talep: Number(summary.talep || 0),
+        tedarik: Number(summary.tedarik || 0),
+        edilmeyen: Number(summary.edilmeyen || 0),
+        gec_tedarik: Number(summary.gec_tedarik || 0),
+        sho_basilan: Number(summary.sho_basilan || 0),
+        sho_basilmayan: Number(summary.sho_basilmayan || 0),
+        spot: Number(summary.spot || 0),
+        filo: Number(summary.filo || 0),
     };
 };
 
