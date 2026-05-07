@@ -586,6 +586,7 @@ const analizMailGonder = async ({ mailPayload, bolge }) => {
                     },
                 ],
             });
+
             results.push({
                 email,
                 ok: true,
