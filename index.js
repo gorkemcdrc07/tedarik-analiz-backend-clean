@@ -783,97 +783,97 @@ app.get("/routes", (req, res) => {
 app.post("/tmsorders", tmsordersHandler);
 app.post("/tmsorders/week", tmsordersHandler);
 
-app.post("/send-analiz-mail", async (req, res) => {
-    console.log("📩 GELEN BODY:", req.body);
+app.post("/download-analiz-pdf", async (req, res) => {
+    let browser;
 
-    app.post("/download-analiz-pdf", async (req, res) => {
-        let browser;
+    try {
+        const { item, bolge } = req.body;
 
-        try {
-            const { item, bolge } = req.body;
-
-            if (!item) {
-                return res.status(400).json({
-                    ok: false,
-                    message: "PDF için item verisi bulunamadı.",
-                });
-            }
-
-            const { data = [], summaries = [] } = item;
-
-            const effectiveSummaries =
-                summaries.length > 0
-                    ? summaries
-                    : [
-                        {
-                            proje: bolge || "Sefer Raporu",
-                            talep: data.length,
-                            tedarik: data.length,
-                            edilmeyen: 0,
-                            gec_tedarik: 0,
-                            sho_basilan: 0,
-                            sho_basilmayan: 0,
-                            spot: 0,
-                            filo: 0,
-                        },
-                    ];
-
-            const html = buildHtml(effectiveSummaries, data, bolge);
-
-            browser = await puppeteer.launch({
-                headless: true,
-                args: [
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ],
-            });
-
-            const page = await browser.newPage();
-
-            await page.setContent(html, {
-                waitUntil: "domcontentloaded",
-                timeout: 120000,
-            });
-
-            await page.emulateMediaType("screen");
-            await new Promise((resolve) => setTimeout(resolve, 500));
-
-            const pdfBuffer = await page.pdf({
-                format: "A4",
-                landscape: true,
-                printBackground: true,
-                margin: {
-                    top: "8mm",
-                    right: "6mm",
-                    bottom: "8mm",
-                    left: "6mm",
-                },
-            });
-
-            await browser.close();
-            browser = null;
-
-            const fileName = `sefer-analiz-raporu-${slugify(bolge || "bolge")}.pdf`;
-
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-
-            return res.send(pdfBuffer);
-        } catch (err) {
-            if (browser) {
-                await browser.close().catch(() => { });
-            }
-
-            console.error("PDF oluşturma hatası:", err);
-
-            return res.status(500).json({
+        if (!item) {
+            return res.status(400).json({
                 ok: false,
-                message: err.message || "PDF oluşturulamadı.",
+                message: "PDF için item verisi bulunamadı.",
             });
         }
-    });
+
+        const { data = [], summaries = [] } = item;
+
+        const effectiveSummaries =
+            summaries.length > 0
+                ? summaries
+                : [
+                    {
+                        proje: bolge || "Sefer Raporu",
+                        talep: data.length,
+                        tedarik: data.length,
+                        edilmeyen: 0,
+                        gec_tedarik: 0,
+                        sho_basilan: 0,
+                        sho_basilmayan: 0,
+                        spot: 0,
+                        filo: 0,
+                    },
+                ];
+
+        const html = buildHtml(effectiveSummaries, data, bolge);
+
+        browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        });
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: "domcontentloaded",
+            timeout: 120000,
+        });
+
+        await page.emulateMediaType("screen");
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+            landscape: true,
+            printBackground: true,
+            margin: {
+                top: "8mm",
+                right: "6mm",
+                bottom: "8mm",
+                left: "6mm",
+            },
+        });
+
+        await browser.close();
+        browser = null;
+
+        const fileName = `sefer-analiz-raporu-${slugify(bolge || "bolge")}.pdf`;
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+        return res.send(pdfBuffer);
+    } catch (err) {
+        if (browser) {
+            await browser.close().catch(() => { });
+        }
+
+        console.error("PDF oluşturma hatası:", err);
+
+        return res.status(500).json({
+            ok: false,
+            message: err.message || "PDF oluşturulamadı.",
+        });
+    }
+});
+
+app.post("/send-analiz-mail", async (req, res) => {
+    console.log("📩 GELEN BODY:", req.body);
 
     try {
         const { mailPayload, bolge } = req.body;
@@ -903,6 +903,7 @@ app.post("/send-analiz-mail", async (req, res) => {
         });
     }
 });
+
 
 /* =======================
    CRON
