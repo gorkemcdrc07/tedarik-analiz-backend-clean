@@ -8,6 +8,7 @@ const cron = require("node-cron");
 const fs = require("fs");
 const path = require("path");
 const dns = require("dns");
+const XLSX = require("xlsx-js-style");
 
 dns.setDefaultResultOrder("ipv4first");
 
@@ -492,6 +493,100 @@ const buildHtml = (summaries, data, bolge) => {
 </div></body></html>`;
 };
 
+const buildExcelBuffer = ({ item, bolge }) => {
+    const { data = [], summaries = [] } = item || {};
+
+    const summaryRows = summaries.map((s) => ({
+        Bölge: s.bolge || bolge || "-",
+        Proje: s.proje || "-",
+        Talep: Number(s.talep || 0),
+        Tedarik: Number(s.tedarik || 0),
+        "Tedarik Edilmeyen": Number(s.edilmeyen || 0),
+        Filo: Number(s.filo || 0),
+        Spot: Number(s.spot || 0),
+        "SHÖ Basılan": Number(s.sho_basilan || 0),
+        "SHÖ Basılmayan": Number(s.sho_basilmayan || 0),
+        "Geç Tedarik": Number(s.gec_tedarik || 0),
+        Oran: `%${s.oran || 0}`,
+    }));
+
+    const detailRows = data.map((r) => ({
+        Bölge: r.bolge || "-",
+        Proje: r.proje || "-",
+        "Sefer No": r.seferNo || "-",
+        "Talep No": r.talepNo || "-",
+        Müşteri: r.musteri || "-",
+        "Yükleme İl": r.yuklemeIl || "-",
+        "Yükleme İlçe": r.yuklemeIlce || "-",
+        "Yükleme Noktası": r.yuklemeNoktasi || getYukleme(r),
+        "Teslim İl": r.teslimIl || "-",
+        "Teslim İlçe": r.teslimIlce || "-",
+        "Teslim Noktası": r.teslimNoktasi || getTeslim(r),
+        "Yükleme Tarihi": r.yuklemeTarihi || "-",
+        "Yüklemeye Geliş": r.yuklemeyeGelis || "-",
+        "Fark Saat": r.farkSaat ?? "-",
+        "Geç Tedarik": r.gecTedarik || "-",
+        Durum: r.durumText || statusText(r),
+        "Araç Tipi": r.aracTipi || "-",
+    }));
+
+    const wb = XLSX.utils.book_new();
+
+    const wsSummary = XLSX.utils.json_to_sheet(
+        summaryRows.length > 0
+            ? summaryRows
+            : [{ Bilgi: "Özet verisi bulunamadı." }]
+    );
+
+    const wsDetail = XLSX.utils.json_to_sheet(
+        detailRows.length > 0
+            ? detailRows
+            : [{ Bilgi: "Detay sefer verisi bulunamadı." }]
+    );
+
+    wsSummary["!cols"] = [
+        { wch: 16 },
+        { wch: 32 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 18 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 10 },
+    ];
+
+    wsDetail["!cols"] = [
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 36 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 34 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 34 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 20 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Özet");
+    XLSX.utils.book_append_sheet(wb, wsDetail, "Detay Seferler");
+
+    return XLSX.write(wb, {
+        type: "buffer",
+        bookType: "xlsx",
+    });
+};
+
 const analizMailGonder = async ({ mailPayload, bolge }) => {
     let browser;
 
@@ -769,6 +864,7 @@ app.get("/routes", (req, res) => {
             "POST /tmsorders/week",
             "POST /send-analiz-mail",
             "POST /download-analiz-pdf",
+            "POST /download-analiz-excel",
         ],
         allowedOrigins: ALLOWED_ORIGINS,
     });
@@ -866,6 +962,37 @@ app.post("/download-analiz-pdf", async (req, res) => {
     }
 });
 
+app.post("/download-analiz-excel", async (req, res) => {
+    try {
+        const { item, bolge } = req.body;
+
+        if (!item) {
+            return res.status(400).json({
+                ok: false,
+                message: "Excel için item verisi bulunamadı.",
+            });
+        }
+
+        const excelBuffer = buildExcelBuffer({ item, bolge });
+        const fileName = `sefer-analiz-raporu-${slugify(bolge || "bolge")}.xlsx`;
+
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+        return res.send(excelBuffer);
+    } catch (err) {
+        console.error("Excel oluşturma hatası:", err);
+
+        return res.status(500).json({
+            ok: false,
+            message: err.message || "Excel oluşturulamadı.",
+        });
+    }
+});
+
 app.post("/send-analiz-mail", async (req, res) => {
     console.log("📩 GELEN BODY:", req.body);
 
@@ -897,7 +1024,6 @@ app.post("/send-analiz-mail", async (req, res) => {
         });
     }
 });
-
 
 /* =======================
    CRON
