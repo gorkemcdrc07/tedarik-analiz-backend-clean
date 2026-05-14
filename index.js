@@ -170,19 +170,39 @@ const short = (t, max = 42) => {
 };
 
 const statusText = (r) => {
-    if (!r?.yuklemeyeGelis || String(r.yuklemeyeGelis).trim() === "-") {
-        return "Yükleme Tarihi Yok";
+    const seferNo = String(r?.seferNo || "").trim().toLocaleLowerCase("tr-TR");
+    const yuklemeyeGelis = String(r?.yuklemeyeGelis || "").trim();
+
+    const seferPlanlamada =
+        !seferNo ||
+        seferNo === "-" ||
+        seferNo === "planlanmadı" ||
+        seferNo === "planlamada";
+
+    const yuklemeyeGelisYok =
+        !yuklemeyeGelis ||
+        yuklemeyeGelis === "-";
+
+    if (seferPlanlamada) {
+        return "Tedarik Edilemeyen";
     }
 
-    return r?.durumText || "-";
-};
+    if (yuklemeyeGelisYok) {
+        return "Tedarik Edilemeyen";
+    }
 
+    if (r?.durumText === "Geç Tedarik" || r?.gecTedarik === "Evet") {
+        return "Geç Tedarik";
+    }
+
+    return "Zamanında";
+};
 const statusClass = (r) => {
     const s = statusText(r);
 
     if (s === "Zamanında") return "bs";
     if (s === "Geç Tedarik") return "bd";
-    if (s === "Yükleme Tarihi Yok") return "bw";
+    if (s === "Tedarik Edilemeyen") return "bw";
 
     return "bn";
 };
@@ -525,8 +545,8 @@ const buildExcelBuffer = ({ item, bolge }) => {
         "Yükleme Tarihi": r.yuklemeTarihi || "-",
         "Yüklemeye Geliş": r.yuklemeyeGelis || "-",
         "Fark Saat": r.farkSaat ?? "-",
-        "Geç Tedarik": r.gecTedarik || "-",
-        Durum: r.durumText || statusText(r),
+        "Geç Tedarik": statusText(r) === "Geç Tedarik" ? "Evet" : "Hayır",
+        Durum: statusText(r),
         "Araç Tipi": r.aracTipi || "-",
     }));
 
