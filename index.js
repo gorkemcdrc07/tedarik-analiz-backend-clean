@@ -578,6 +578,61 @@ const buildExcelBuffer = ({ item, bolge }) => {
         { wch: 20 },
     ];
 
+    const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+        fill: { fgColor: { rgb: "111827" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+            top: { style: "thin", color: { rgb: "334155" } },
+            bottom: { style: "thin", color: { rgb: "334155" } },
+            left: { style: "thin", color: { rgb: "334155" } },
+            right: { style: "thin", color: { rgb: "334155" } },
+        },
+    };
+
+    const bodyStyle = {
+        font: { color: { rgb: "0F172A" }, sz: 10 },
+        alignment: { vertical: "center", wrapText: true },
+        border: {
+            bottom: { style: "thin", color: { rgb: "E5E7EB" } },
+        },
+    };
+
+    const applyModernStyle = (ws) => {
+        const range = XLSX.utils.decode_range(ws["!ref"]);
+
+        for (let C = range.s.c; C <= range.e.c; C++) {
+            const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (ws[cellRef]) ws[cellRef].s = headerStyle;
+        }
+
+        for (let R = 1; R <= range.e.r; R++) {
+            for (let C = range.s.c; C <= range.e.c; C++) {
+                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[cellRef]) continue;
+
+                ws[cellRef].s = {
+                    ...bodyStyle,
+                    fill: {
+                        fgColor: { rgb: R % 2 === 0 ? "F8FAFC" : "FFFFFF" },
+                    },
+                };
+            }
+        }
+    };
+
+    applyModernStyle(wsSummary);
+    applyModernStyle(wsDetail);
+
+    wsSummary["!autofilter"] = { ref: wsSummary["!ref"] };
+    wsDetail["!autofilter"] = { ref: wsDetail["!ref"] };
+
+    wsSummary["!freeze"] = { xSplit: 0, ySplit: 1 };
+    wsDetail["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+    wsSummary["!rows"] = [{ hpt: 28 }];
+    wsDetail["!rows"] = [{ hpt: 28 }];
+
     XLSX.utils.book_append_sheet(wb, wsSummary, "Özet");
     XLSX.utils.book_append_sheet(wb, wsDetail, "Detay Seferler");
 
@@ -585,6 +640,7 @@ const buildExcelBuffer = ({ item, bolge }) => {
         type: "buffer",
         bookType: "xlsx",
     });
+
 };
 
 const analizMailGonder = async ({ mailPayload, bolge }) => {
