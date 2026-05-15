@@ -636,14 +636,31 @@ const buildExcelBuffer = ({ item, bolge }) => {
             return v;
         }
 
+        // Excel serial date gelirse
+        if (typeof v === "number") {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const d = new Date(excelEpoch.getTime() + v * 86400000);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
         const s = String(v).trim();
 
+        // 14.05.2026 00:00
+        // 14.05.2026 00:00:00
         const trMatch = s.match(
-            /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/
+            /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
         );
 
         if (trMatch) {
-            const [, gun, ay, yil, saat = "0", dakika = "0"] = trMatch;
+            const [
+                ,
+                gun,
+                ay,
+                yil,
+                saat = "0",
+                dakika = "0",
+                saniye = "0",
+            ] = trMatch;
 
             return new Date(
                 Number(yil),
@@ -651,7 +668,7 @@ const buildExcelBuffer = ({ item, bolge }) => {
                 Number(gun),
                 Number(saat),
                 Number(dakika),
-                0,
+                Number(saniye),
                 0
             );
         }
@@ -660,7 +677,6 @@ const buildExcelBuffer = ({ item, bolge }) => {
 
         return isNaN(d.getTime()) ? null : d;
     };
-
     const sonrakiIsGunuSaat6 = (tarih) => {
         if (!tarih) return null;
 
@@ -706,6 +722,16 @@ const buildExcelBuffer = ({ item, bolge }) => {
         }
 
         const limit = sonrakiIsGunuSaat6(yuklemeTarihi);
+
+        console.log("GEÇ TEDARİK KONTROL", {
+            seferNo: row.seferNo,
+            yuklemeTarihi: row.yuklemeTarihi,
+            yuklemeyeGelis: row.yuklemeyeGelis,
+            parsedYukleme: yuklemeTarihi,
+            parsedGelis: yuklemeyeGelis,
+            limit,
+            sonuc: limit && yuklemeyeGelis > limit ? "Geç Tedarik" : "Zamanında",
+        });
 
         if (limit && yuklemeyeGelis > limit) {
             return "Geç Tedarik";
