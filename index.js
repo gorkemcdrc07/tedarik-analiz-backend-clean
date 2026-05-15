@@ -928,34 +928,6 @@ const buildExcelBuffer = ({ item, bolge }) => {
     });
     r3++;
 
-    const isBosDeger = (v) => {
-        const s = String(v ?? "").trim();
-
-        return (
-            !s ||
-            s === "-" ||
-            s.toLowerCase() === "null" ||
-            s.toLowerCase() === "undefined"
-        );
-    };
-
-    const sonrakiIsGunuSaat6 = (v) => {
-        const d = new Date(v);
-
-        if (isNaN(d.getTime())) return null;
-
-        const limit = new Date(d);
-
-        limit.setDate(limit.getDate() + 1);
-
-        while (limit.getDay() === 0 || limit.getDay() === 6) {
-            limit.setDate(limit.getDate() + 1);
-        }
-
-        limit.setHours(6, 0, 0, 0);
-
-        return limit;
-    };
 
     const isBosDeger = (v) => {
         const s = String(v ?? "")
