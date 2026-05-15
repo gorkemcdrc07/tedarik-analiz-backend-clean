@@ -64,7 +64,13 @@ const sonPayloadKaydet = (payload) => { fs.writeFileSync(LAST_PAYLOAD_FILE, JSON
 
 const sonPayloadOku = () => { if (!fs.existsSync(LAST_PAYLOAD_FILE)) return null; return JSON.parse(fs.readFileSync(LAST_PAYLOAD_FILE, "utf8")); };
 
-const escapeHtml = (v) => String(v ?? "-").replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, """).replace(/'/g, "'");
+const escapeHtml = (v) =>
+    String(v ?? "-")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 
 const slugify = (t) => String(t || "rapor").toLowerCase().trim().replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
