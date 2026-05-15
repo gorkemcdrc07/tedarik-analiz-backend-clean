@@ -942,10 +942,41 @@ const buildExcelBuffer = ({ item, bolge }) => {
         );
     };
 
+    const parseTarih = (v) => {
+        if (!v) return null;
+
+        if (v instanceof Date && !isNaN(v.getTime())) {
+            return v;
+        }
+
+        const s = String(v).trim();
+
+        const trMatch = s.match(
+            /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/
+        );
+
+        if (trMatch) {
+            const [, gun, ay, yil, saat = "0", dakika = "0"] = trMatch;
+
+            return new Date(
+                Number(yil),
+                Number(ay) - 1,
+                Number(gun),
+                Number(saat),
+                Number(dakika),
+                0,
+                0
+            );
+        }
+
+        const d = new Date(s);
+
+        return isNaN(d.getTime()) ? null : d;
+    };
     const sonrakiIsGunuSaat6 = (tarih) => {
         if (!tarih) return null;
 
-        const d = new Date(tarih);
+        const d = parseTarih(tarih);
 
         if (isNaN(d.getTime())) return null;
 
@@ -980,13 +1011,9 @@ const buildExcelBuffer = ({ item, bolge }) => {
             return "Tedarik Edilemeyen";
         }
 
-        const yuklemeTarihi = row?.yuklemeTarihi
-            ? new Date(row.yuklemeTarihi)
-            : null;
+        const yuklemeTarihi = parseTarih(row?.yuklemeTarihi);
 
-        const yuklemeyeGelis = row?.yuklemeyeGelis
-            ? new Date(row.yuklemeyeGelis)
-            : null;
+        const yuklemeyeGelis = parseTarih(row?.yuklemeyeGelis);
 
         if (
             !yuklemeTarihi ||
