@@ -904,23 +904,23 @@ const buildExcelBuffer = ({ item, bolge }) => {
     const ws3 = {}, m3 = [];
     let r3 = 0;
 
-    mergeAdd(m3, r3, 0, r3, 12);
+    mergeAdd(m3, r3, 0, r3, 11);
     setCell(ws3, r3, 0, "  🗂️  DETAY SEFER LİSTESİ", {
         font: mkFont(true, 13, clr.white), fill: mkFill(clr.dark), alignment: mkAlign("left"),
     });
-    for (let c = 1; c <= 12; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark) });
+    for (let c = 1; c <= 11; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark) });
     r3++;
 
-    mergeAdd(m3, r3, 0, r3, 12);
+    mergeAdd(m3, r3, 0, r3, 11);
     setCell(ws3, r3, 0,
         `  Toplam ${data.length} sefer  •  Zamanında: ${zamCount}  •  Geç: ${gecCount}  •  Tarihi Yok: ${yokCount}`,
         { font: mkFont(false, 9, clr.light), fill: mkFill(clr.dark2), alignment: mkAlign("left") }
     );
-    for (let c = 1; c <= 12; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark2) });
+    for (let c = 1; c <= 11; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark2) });
     r3++;
     r3++;
 
-    ["Bölge", "Proje", "Sefer No", "Talep No", "Müşteri", "Yükleme Noktası", "Teslim Noktası", "Yükleme Tarihi", "Yüklemeye Geliş", "Fark (s)", "Tedarik Durumu", "Durum", "Araç Tipi"].forEach((h, c) => {
+    ["Bölge", "Proje", "Sefer No", "Talep No", "Müşteri", "Yükleme Noktası", "Teslim Noktası", "Yükleme Tarihi", "Yüklemeye Geliş", "Fark (s)", "Durum", "Araç Tipi"].forEach((h, c) => {
         setCell(ws3, r3, c, h, {
             font: mkFont(true, 9, clr.white), fill: mkFill(clr.headerBg),
             alignment: mkAlign("center"), border: mkBorder("thin", clr.slate),
@@ -957,20 +957,54 @@ const buildExcelBuffer = ({ item, bolge }) => {
         return limit;
     };
 
-    const hesaplaTedarikDurumuExcel = (row) => {
+    const isBosDeger = (v) => {
+        const s = String(v ?? "")
+            .trim()
+            .toLocaleLowerCase("tr-TR");
+
+        return (
+            !s ||
+            s === "-" ||
+            s === "null" ||
+            s === "undefined"
+        );
+    };
+
+    const sonrakiIsGunuSaat6 = (tarih) => {
+        if (!tarih) return null;
+
+        const d = new Date(tarih);
+
+        if (isNaN(d.getTime())) return null;
+
+        const next = new Date(d);
+
+        next.setDate(next.getDate() + 1);
+
+        while (next.getDay() === 0 || next.getDay() === 6) {
+            next.setDate(next.getDate() + 1);
+        }
+
+        next.setHours(6, 0, 0, 0);
+
+        return next;
+    };
+
+    const hesaplaDurumExcel = (row) => {
         const seferNo = String(row?.seferNo || "")
             .trim()
             .toLocaleLowerCase("tr-TR");
 
-        const yuklemeyeGelisBos = isBosDeger(row?.yuklemeyeGelis);
-
-        // Yüklemeye geliş boşsa
-        if (yuklemeyeGelisBos) {
+        // planlamadaysa
+        if (
+            seferNo.includes("planlamada") ||
+            seferNo.includes("planlanmadı")
+        ) {
             return "Tedarik Edilemeyen";
         }
 
-        // Sefer no planlamadaysa
-        if (seferNo.includes("planlamada")) {
+        // yüklemeye geliş yoksa
+        if (isBosDeger(row?.yuklemeyeGelis)) {
             return "Tedarik Edilemeyen";
         }
 
@@ -988,10 +1022,9 @@ const buildExcelBuffer = ({ item, bolge }) => {
             isNaN(yuklemeTarihi.getTime()) ||
             isNaN(yuklemeyeGelis.getTime())
         ) {
-            return "-";
+            return "Tedarik Edilemeyen";
         }
 
-        // Yükleme tarihinden sonraki iş günü saat 06:00
         const limit = sonrakiIsGunuSaat6(yuklemeTarihi);
 
         if (limit && yuklemeyeGelis > limit) {
@@ -1003,7 +1036,7 @@ const buildExcelBuffer = ({ item, bolge }) => {
     data.forEach((row, idx) => {
         const rb = idx % 2 === 0 ? clr.row0 : clr.row1;
         const rs = (bg) => ({ font: mkFont(false, 9, clr.dark), fill: mkFill(bg || rb), alignment: mkAlign("center", "center", true), border: mkBorder("thin", "E2E8F0") });
-        const durum = hesaplaTedarikDurumuExcel(row);
+        const durum = hesaplaDurumExcel(row);
 
         let durumBg = rb, durumFg = clr.dark;
         if (durum === "Zamanında") {
@@ -1023,9 +1056,6 @@ const buildExcelBuffer = ({ item, bolge }) => {
             : fark < 0 ? `${fark}` : fark > 0 ? `+${fark}` : "0";
         const farkFg = fark < 0 ? "15803D" : fark > 0 ? clr.red : clr.mid;
 
-        const td = hesaplaTedarikDurumuExcel(row);
-        const tdbg = td === "Zamanında" ? clr.greenBg : td === "Geç Tedarik" ? clr.redBg : clr.amberBg;
-        const tdfg = td === "Zamanında" ? clr.green : td === "Geç Tedarik" ? clr.red : clr.amber;
 
         setCell(ws3, r3, 0, row.bolge || bolge || "-", rs());
         setCell(ws3, r3, 1, row.proje || "-", { ...rs(), font: mkFont(true, 9, clr.dark2), alignment: mkAlign("left", "center", true) });
@@ -1037,20 +1067,25 @@ const buildExcelBuffer = ({ item, bolge }) => {
         setCell(ws3, r3, 7, fmtDate(row.yuklemeTarihi), rs());
         setCell(ws3, r3, 8, fmtDate(row.yuklemeyeGelis), rs());
         setCell(ws3, r3, 9, farkStr, { font: mkFont(true, 10, farkStr === "-" ? clr.mid : farkFg), fill: mkFill(rb), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
-        setCell(ws3, r3, 10, td, { font: mkFont(true, 9, tdfg), fill: mkFill(tdbg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
-        setCell(ws3, r3, 11, durum, { font: mkFont(true, 9, durumFg), fill: mkFill(durumBg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
-        setCell(ws3, r3, 12, row.aracTipi || "-", rs());
+        setCell(ws3, r3, 10, durum, {
+            font: mkFont(true, 9, durumFg),
+            fill: mkFill(durumBg),
+            alignment: mkAlign("center"),
+            border: mkBorder("thin", "E2E8F0")
+        });
+
+        setCell(ws3, r3, 11, row.aracTipi || "-", rs());
         r3++;
     });
 
     ws3["!cols"] = [
         { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 30 },
         { wch: 24 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 9 },
-        { wch: 20 }, { wch: 18 }, { wch: 12 },
+        { wch: 20 }, { wch: 12 },
     ];
     ws3["!merges"] = m3;
-    ws3["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r3 + 2, c: 12 } });
-    ws3["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3, c: 12 } }) };
+    ws3["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r3 + 2, c: 11 } });
+    ws3["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3, c: 11 } }) };
     ws3["!freeze"] = { xSplit: 0, ySplit: 4 };
     ws3["!rows"] = [{ hpt: 26 }, { hpt: 18 }];
     XLSX.utils.book_append_sheet(wb, ws3, "🗂️ Detay Seferler");
