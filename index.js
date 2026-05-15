@@ -539,192 +539,451 @@ const buildHtml = (summaries, data, bolge) => {
 </html>`;
 };
 
-/* ======================= EXCEL ======================= */
+/* ======================= EXCEL (MODERN) ======================= */
 
 const buildExcelBuffer = ({ item, bolge }) => {
     const { data = [], summaries = [] } = item || {};
 
-    const summaryRows = summaries.map((s) => ({
-        Bölge: s.bolge || bolge || "-",
-        Proje: s.proje || "-",
-        Talep: Number(s.talep || 0),
-        Tedarik: Number(s.tedarik || 0),
-        "Tedarik Edilmeyen": Number(s.edilmeyen || 0),
-        Filo: Number(s.filo || 0),
-        Spot: Number(s.spot || 0),
-        "SHÖ Basılan": Number(s.sho_basilan || 0),
-        "SHÖ Basılmayan": Number(s.sho_basilmayan || 0),
-        "Geç Tedarik": Number(s.gec_tedarik || 0),
-        Oran: `%${s.oran || 0}`,
-    }));
+    // ─── STYLE HELPERS ─────────────────────────────────────────────
+    const clr = {
+        dark: "0F172A", dark2: "1E293B", slate: "334155", mid: "64748B",
+        light: "94A3B8", white: "FFFFFF",
+        blue: "1D4ED8", blueBg: "DBEAFE", blueBdr: "BFDBFE",
+        green: "166534", greenBg: "DCFCE7", greenBdr: "BBF7D0",
+        red: "991B1B", redBg: "FEE2E2", redBdr: "FECACA",
+        amber: "92400E", amberBg: "FEF3C7",
+        purple: "6B21A8", purpleBg: "FAF5FF",
+        sky: "0369A1", skyBg: "F0F9FF",
+        row0: "F8FAFC", row1: "FFFFFF",
+        headerBg: "1E293B", sectionBg: "EFF6FF",
+    };
 
-    const sonrakiIsGunuSaat6 = (v) => {
+    const mkFont = (bold, sz, rgb, mono) => ({
+        name: mono ? "Courier New" : "Arial",
+        bold: !!bold, sz: sz || 10,
+        color: { rgb: rgb || clr.dark },
+    });
+    const mkFill = (rgb) => ({ type: "pattern", patternType: "solid", fgColor: { rgb } });
+    const mkBorder = (style = "thin", rgb = "E2E8F0") => ({
+        top: { style, color: { rgb } }, bottom: { style, color: { rgb } },
+        left: { style, color: { rgb } }, right: { style, color: { rgb } },
+    });
+    const mkAlign = (h = "center", v = "center", wrap = false) => ({
+        horizontal: h, vertical: v, wrapText: wrap,
+    });
+
+    const mergeAdd = (arr, r1, c1, r2, c2) =>
+        arr.push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } });
+
+    const setCell = (ws, r, c, v, s) => {
+        ws[XLSX.utils.encode_cell({ r, c })] = { v: v ?? "", t: "s", s };
+    };
+    const setNum = (ws, r, c, v, s) => {
+        ws[XLSX.utils.encode_cell({ r, c })] = { v: Number(v) || 0, t: "n", s };
+    };
+    const setBlank = (ws, r, c, s) => {
+        ws[XLSX.utils.encode_cell({ r, c })] = { v: "", t: "s", s };
+    };
+
+    const barChart = (pct, w = 20) => {
+        const filled = Math.round((Math.min(100, Math.max(0, pct)) / 100) * w);
+        return "█".repeat(filled) + "░".repeat(w - filled);
+    };
+
+    const perfColors = (p) =>
+        p >= 90 ? { bg: "F0FDF4", fg: "166534" }
+            : p >= 70 ? { bg: "DBEAFE", fg: "1D4ED8" }
+                : p >= 50 ? { bg: "FEF3C7", fg: "92400E" }
+                    : { bg: "FEE2E2", fg: "991B1B" };
+
+    const fmtDate = (v) => {
+        if (!v) return "-";
         const d = new Date(v);
-        if (isNaN(d.getTime())) return null;
-        const limit = new Date(d);
-        limit.setDate(limit.getDate() + 1);
-        while (limit.getDay() === 0 || limit.getDay() === 6) {
-            limit.setDate(limit.getDate() + 1);
-        }
-        limit.setHours(6, 0, 0, 0);
-        return limit;
+        return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("tr-TR");
     };
 
-    const hesaplaTedarikDurumuExcel = (r) => {
-        const seferNo = String(r?.seferNo || "")
-            .trim()
-            .toLocaleLowerCase("tr-TR");
-        const yuklemeyeGelis = String(r?.yuklemeyeGelis || "").trim();
-
-        if (
-            !yuklemeyeGelis ||
-            yuklemeyeGelis === "-" ||
-            seferNo.includes("planlamada") ||
-            seferNo.includes("planlanmadı")
-        ) {
-            return "Tedarik Edilemeyen";
-        }
-
-        const yukleme = r?.yuklemeTarihi ? new Date(r.yuklemeTarihi) : null;
-        const gelis = r?.yuklemeyeGelis ? new Date(r.yuklemeyeGelis) : null;
-
-        if (!yukleme || !gelis) return "-";
-        if (isNaN(yukleme.getTime()) || isNaN(gelis.getTime())) return "-";
-
-        const limit = sonrakiIsGunuSaat6(yukleme);
-        return gelis > limit ? "Geç Tedarik" : "-";
-    };
-
-    const detailRows = data.map((r) => ({
-        Bölge: r.bolge || "-",
-        Proje: r.proje || "-",
-        "Sefer No": r.seferNo || "-",
-        "Talep No": r.talepNo || "-",
-        Müşteri: r.musteri || "-",
-        "Yükleme İl": r.yuklemeIl || "-",
-        "Yükleme İlçe": r.yuklemeIlce || "-",
-        "Yükleme Noktası": r.yuklemeNoktasi || getYukleme(r),
-        "Teslim İl": r.teslimIl || "-",
-        "Teslim İlçe": r.teslimIlce || "-",
-        "Teslim Noktası": r.teslimNoktasi || getTeslim(r),
-        "Yükleme Tarihi": r.yuklemeTarihi || "-",
-        "Yüklemeye Geliş": r.yuklemeyeGelis || "-",
-        "Fark Saat": r.farkSaat ?? "-",
-        "Tedarik Durumu": hesaplaTedarikDurumuExcel(r),
-        Durum: r.durumText || statusText(r),
-        "Araç Tipi": r.aracTipi || "-",
-    }));
+    // ─── AGGREGATES ────────────────────────────────────────────────
+    const totalTalep = summaries.reduce((a, s) => a + Number(s.talep || 0), 0);
+    const totalTedarik = summaries.reduce((a, s) => a + Number(s.tedarik || 0), 0);
+    const totalEdilmeyen = summaries.reduce((a, s) => a + Number(s.edilmeyen || 0), 0);
+    const totalGec = summaries.reduce((a, s) => a + Number(s.gec_tedarik || 0), 0);
+    const totalSpot = summaries.reduce((a, s) => a + Number(s.spot || 0), 0);
+    const totalFilo = summaries.reduce((a, s) => a + Number(s.filo || 0), 0);
+    const totalSho = summaries.reduce((a, s) => a + Number(s.sho_basilan || 0), 0);
+    const totalZam = Math.max(0, totalTedarik - totalGec);
+    const totalPerf = totalTalep > 0 ? Math.round((totalZam / totalTalep) * 100) : 0;
+    const totalShoOran = totalTedarik > 0 ? Math.round((totalSho / totalTedarik) * 100) : 0;
+    const zamCount = data.filter((d) => d.durumText === "Zamanında").length;
+    const gecCount = data.filter((d) => d.durumText === "Geç Tedarik").length;
+    const yokCount = data.filter((d) => !d.yuklemeyeGelis || d.yuklemeyeGelis === "-").length;
 
     const wb = XLSX.utils.book_new();
 
-    const wsSummary = XLSX.utils.json_to_sheet(
-        summaryRows.length > 0
-            ? summaryRows
-            : [{ Bilgi: "Özet verisi bulunamadı." }]
-    );
+    // ═══════════════════════════════════════════════════════════════
+    // SHEET 1 — DASHBOARD
+    // ═══════════════════════════════════════════════════════════════
+    const ws1 = {}, m1 = [];
+    let r = 0;
 
-    const wsDetail = XLSX.utils.json_to_sheet(
-        detailRows.length > 0
-            ? detailRows
-            : [{ Bilgi: "Detay sefer verisi bulunamadı." }]
+    // Banner
+    mergeAdd(m1, r, 0, r, 11);
+    setCell(ws1, r, 0,
+        `  🚚 TEDARİK ANALİZ RAPORU  —  ${bolge || "TÜM BÖLGELER"}  |  Odak Lojistik`,
+        { font: mkFont(true, 16, clr.white), fill: mkFill(clr.dark), alignment: mkAlign("left"), border: mkBorder("medium", clr.slate) }
     );
+    for (let c = 1; c <= 11; c++) setBlank(ws1, r, c, { fill: mkFill(clr.dark) });
+    r++;
 
-    wsSummary["!cols"] = [
-        { wch: 16 }, { wch: 32 }, { wch: 10 }, { wch: 10 }, { wch: 18 },
-        { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 10 },
+    mergeAdd(m1, r, 0, r, 11);
+    setCell(ws1, r, 0,
+        `  Oluşturulma: ${new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" })}   •   ${summaries.length} proje   •   ${data.length} sefer`,
+        { font: mkFont(false, 9, clr.light), fill: mkFill(clr.dark2), alignment: mkAlign("left") }
+    );
+    for (let c = 1; c <= 11; c++) setBlank(ws1, r, c, { fill: mkFill(clr.dark2) });
+    r++;
+    r++;
+
+    // KPI section header
+    mergeAdd(m1, r, 0, r, 11);
+    setCell(ws1, r, 0, "  📊  GENEL ÖZET — KPI GÖSTERGELERİ", {
+        font: mkFont(true, 11, clr.dark), fill: mkFill(clr.sectionBg),
+        alignment: mkAlign("left"),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    for (let c = 1; c <= 11; c++) setBlank(ws1, r, c, {
+        fill: mkFill(clr.sectionBg),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    r++;
+    r++;
+
+    // KPI cards (label / big number / subtitle — 3 rows, 2 cols each)
+    const kpiCards = [
+        { label: "📦 TALEP", val: totalTalep, sub: "Toplam Talep", bg: clr.blueBg, fg: clr.blue, bdr: clr.blueBdr },
+        { label: "✅ TEDARİK", val: totalTedarik, sub: "Temin Edilen", bg: clr.greenBg, fg: clr.green, bdr: clr.greenBdr },
+        { label: "❌ EDİLMEYEN", val: totalEdilmeyen, sub: "Karşılanamayan", bg: totalEdilmeyen > 0 ? clr.redBg : "F1F5F9", fg: totalEdilmeyen > 0 ? clr.red : clr.mid, bdr: totalEdilmeyen > 0 ? clr.redBdr : "E2E8F0" },
+        { label: "⏰ GEÇ TEDARİK", val: totalGec, sub: "Gecikmiş Sefer", bg: totalGec > 0 ? clr.amberBg : "F1F5F9", fg: totalGec > 0 ? clr.amber : clr.mid, bdr: totalGec > 0 ? "FED7AA" : "E2E8F0" },
+        { label: "🚐 SPOT", val: totalSpot, sub: "Spot Araç", bg: clr.purpleBg, fg: clr.purple, bdr: "E9D5FF" },
+        { label: "🚛 FİLO", val: totalFilo, sub: "Filo Aracı", bg: "F0FDF4", fg: "14532D", bdr: "A7F3D0" },
+    ];
+    const kpiCols = [0, 2, 4, 6, 8, 10];
+
+    kpiCards.forEach((k, i) => {
+        const col = kpiCols[i];
+        const bT = { style: "medium", color: { rgb: k.bdr } };
+        const bB = { style: "medium", color: { rgb: k.bdr } };
+        const bL = { style: "medium", color: { rgb: k.bdr } };
+        const bR = { style: "medium", color: { rgb: k.bdr } };
+
+        mergeAdd(m1, r, col, r, col + 1);
+        setCell(ws1, r, col, k.label, { font: mkFont(true, 8, k.fg), fill: mkFill(k.bg), alignment: mkAlign("center"), border: { top: bT, left: bL, right: bR } });
+        setBlank(ws1, r, col + 1, { fill: mkFill(k.bg), border: { top: bT, right: bR } });
+
+        mergeAdd(m1, r + 1, col, r + 1, col + 1);
+        setNum(ws1, r + 1, col, k.val, { font: mkFont(true, 24, k.fg), fill: mkFill(k.bg), alignment: mkAlign("center"), border: { left: bL, right: bR } });
+        setBlank(ws1, r + 1, col + 1, { fill: mkFill(k.bg), border: { right: bR } });
+
+        mergeAdd(m1, r + 2, col, r + 2, col + 1);
+        setCell(ws1, r + 2, col, k.sub, { font: mkFont(false, 8, k.fg), fill: mkFill(k.bg), alignment: mkAlign("center"), border: { bottom: bB, left: bL, right: bR } });
+        setBlank(ws1, r + 2, col + 1, { fill: mkFill(k.bg), border: { bottom: bB, right: bR } });
+    });
+    r += 3;
+    r++;
+
+    // Performans + SHÖ bar kartları
+    const perfC = perfColors(totalPerf);
+    const perfCards2 = [
+        {
+            label: "⚡ PERFORMANS ORANI",
+            val: totalPerf,
+            bar: barChart(totalPerf),
+            sub: `${totalZam} zamanında / ${totalTalep} toplam talep`,
+            bg: perfC.bg, fg: perfC.fg, bdr: perfC.fg,
+        },
+        {
+            label: "📋 SHÖ BASIM ORANI",
+            val: totalShoOran,
+            bar: barChart(totalShoOran),
+            sub: `${totalSho} SHÖ basılan / ${totalTedarik} tedarik`,
+            bg: clr.skyBg, fg: clr.sky, bdr: "7DD3FC",
+        },
     ];
 
-    wsDetail["!cols"] = [
-        { wch: 14 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, { wch: 36 },
-        { wch: 14 }, { wch: 16 }, { wch: 34 }, { wch: 14 }, { wch: 16 },
-        { wch: 34 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 22 },
-        { wch: 18 }, { wch: 20 },
+    perfCards2.forEach((pc, i) => {
+        const cs = i * 6;
+        const bdr = { style: "medium", color: { rgb: pc.bdr } };
+
+        mergeAdd(m1, r, cs, r, cs + 5);
+        setCell(ws1, r, cs, pc.label, { font: mkFont(true, 9, pc.fg), fill: mkFill(pc.bg), alignment: mkAlign("left"), border: { top: bdr, left: bdr, right: bdr } });
+        for (let c = cs + 1; c <= cs + 5; c++) setBlank(ws1, r, c, { fill: mkFill(pc.bg), border: { top: bdr, right: bdr } });
+
+        mergeAdd(m1, r + 1, cs, r + 1, cs + 1);
+        setCell(ws1, r + 1, cs, `${pc.val}%`, { font: mkFont(true, 28, pc.fg), fill: mkFill(pc.bg), alignment: mkAlign("center"), border: { left: bdr } });
+        setBlank(ws1, r + 1, cs + 1, { fill: mkFill(pc.bg) });
+        mergeAdd(m1, r + 1, cs + 2, r + 1, cs + 5);
+        setCell(ws1, r + 1, cs + 2, pc.bar, { font: mkFont(false, 11, pc.fg, true), fill: mkFill(pc.bg), alignment: mkAlign("left", "center"), border: { right: bdr } });
+        for (let c = cs + 3; c <= cs + 5; c++) setBlank(ws1, r + 1, c, { fill: mkFill(pc.bg), border: { right: bdr } });
+
+        mergeAdd(m1, r + 2, cs, r + 2, cs + 5);
+        setCell(ws1, r + 2, cs, pc.sub, { font: mkFont(false, 8, pc.fg), fill: mkFill(pc.bg), alignment: mkAlign("left"), border: { bottom: bdr, left: bdr, right: bdr } });
+        for (let c = cs + 1; c <= cs + 5; c++) setBlank(ws1, r + 2, c, { fill: mkFill(pc.bg), border: { bottom: bdr, right: bdr } });
+    });
+    r += 3;
+    r++;
+
+    // Proje tablosu başlığı
+    mergeAdd(m1, r, 0, r, 11);
+    setCell(ws1, r, 0, "  📁  PROJE BAZLI PERFORMANS TABLOSU", {
+        font: mkFont(true, 11, clr.dark), fill: mkFill(clr.sectionBg),
+        alignment: mkAlign("left"),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    for (let c = 1; c <= 11; c++) setBlank(ws1, r, c, {
+        fill: mkFill(clr.sectionBg),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    r++;
+    r++;
+
+    ["Proje", "Talep", "Tedarik", "Edilmeyen", "Geç Tedarik", "Zamanında", "Perf %", "Grafik", "Spot", "Filo", "SHÖ Basılan", "SHÖ Oranı"].forEach((h, c) => {
+        setCell(ws1, r, c, h, {
+            font: mkFont(true, 9, clr.white), fill: mkFill(clr.headerBg),
+            alignment: mkAlign("center"), border: mkBorder("thin", clr.slate),
+        });
+    });
+    r++;
+
+    summaries.forEach((s, idx) => {
+        const tal = Number(s.talep || 0);
+        const ted = Number(s.tedarik || 0);
+        const ed = Number(s.edilmeyen || 0);
+        const gec2 = Number(s.gec_tedarik || 0);
+        const zam2 = Math.max(0, ted - gec2);
+        const perf2 = tal > 0 ? Math.round((zam2 / tal) * 100) : 0;
+        const sho2 = Number(s.sho_basilan || 0);
+        const shoO = ted > 0 ? Math.round((sho2 / ted) * 100) : 0;
+        const pc2 = perfColors(perf2);
+        const rb = idx % 2 === 0 ? clr.row0 : clr.row1;
+        const rs = (bg) => ({ font: mkFont(false, 10, clr.dark), fill: mkFill(bg || rb), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+
+        setCell(ws1, r, 0, s.proje || "-", { ...rs(), font: mkFont(true, 10, clr.dark2), alignment: mkAlign("left") });
+        setNum(ws1, r, 1, tal, { ...rs(clr.blueBg), font: mkFont(true, 10, clr.blue) });
+        setNum(ws1, r, 2, ted, { ...rs(clr.greenBg), font: mkFont(true, 10, clr.green) });
+        setNum(ws1, r, 3, ed, { ...rs(ed > 0 ? clr.redBg : rb), font: mkFont(ed > 0, 10, ed > 0 ? clr.red : clr.mid) });
+        setNum(ws1, r, 4, gec2, { ...rs(gec2 > 0 ? clr.amberBg : rb), font: mkFont(gec2 > 0, 10, gec2 > 0 ? clr.amber : clr.mid) });
+        setNum(ws1, r, 5, zam2, rs());
+        setCell(ws1, r, 6, `${perf2}%`, { font: mkFont(true, 10, pc2.fg), fill: mkFill(pc2.bg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        setCell(ws1, r, 7, barChart(perf2, 12), { font: mkFont(false, 10, pc2.fg, true), fill: mkFill(pc2.bg), alignment: mkAlign("left", "center"), border: mkBorder("thin", "E2E8F0") });
+        setNum(ws1, r, 8, Number(s.spot || 0), rs());
+        setNum(ws1, r, 9, Number(s.filo || 0), rs());
+        setNum(ws1, r, 10, sho2, rs());
+        setCell(ws1, r, 11, `${shoO}%`, { font: mkFont(false, 10, clr.sky), fill: mkFill(clr.skyBg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        r++;
+    });
+
+    // Toplam satırı
+    const ts = { font: mkFont(true, 10, clr.white), fill: mkFill(clr.dark2), alignment: mkAlign("center"), border: mkBorder("medium", clr.slate) };
+    setCell(ws1, r, 0, "TOPLAM", { ...ts, alignment: mkAlign("left") });
+    setNum(ws1, r, 1, totalTalep, ts);
+    setNum(ws1, r, 2, totalTedarik, ts);
+    setNum(ws1, r, 3, totalEdilmeyen, ts);
+    setNum(ws1, r, 4, totalGec, ts);
+    setNum(ws1, r, 5, totalZam, ts);
+    setCell(ws1, r, 6, `${totalPerf}%`, { ...ts, font: mkFont(true, 10, totalPerf >= 70 ? "86EFAC" : "FCA5A5") });
+    setCell(ws1, r, 7, barChart(totalPerf, 12), {
+        ...ts,
+        font: { name: "Courier New", sz: 10, color: { rgb: totalPerf >= 70 ? "86EFAC" : "FCA5A5" }, bold: true },
+    });
+    setNum(ws1, r, 8, totalSpot, ts);
+    setNum(ws1, r, 9, totalFilo, ts);
+    setNum(ws1, r, 10, totalSho, ts);
+    setCell(ws1, r, 11, `${totalShoOran}%`, { ...ts, font: mkFont(true, 10, "7DD3FC") });
+    r++;
+    r++;
+
+    // Durum dağılımı
+    mergeAdd(m1, r, 0, r, 11);
+    setCell(ws1, r, 0, "  📊  DURUM DAĞILIMI", {
+        font: mkFont(true, 11, clr.dark), fill: mkFill(clr.sectionBg),
+        alignment: mkAlign("left"),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    for (let c = 1; c <= 11; c++) setBlank(ws1, r, c, {
+        fill: mkFill(clr.sectionBg),
+        border: { bottom: { style: "medium", color: { rgb: clr.blue } } },
+    });
+    r++;
+    r++;
+
+    [
+        { label: "✅ Zamanında", count: zamCount, pct: data.length ? Math.round((zamCount / data.length) * 100) : 0, bg: clr.greenBg, fg: clr.green },
+        { label: "⏰ Geç Tedarik", count: gecCount, pct: data.length ? Math.round((gecCount / data.length) * 100) : 0, bg: clr.amberBg, fg: clr.amber },
+        { label: "❓ Yükleme Tarihi Yok", count: yokCount, pct: data.length ? Math.round((yokCount / data.length) * 100) : 0, bg: "FFF7ED", fg: "9A3412" },
+    ].forEach((si) => {
+        setCell(ws1, r, 0, si.label, { font: mkFont(true, 10, si.fg), fill: mkFill(si.bg), alignment: mkAlign("left"), border: mkBorder("thin", "E2E8F0") });
+        setNum(ws1, r, 1, si.count, { font: mkFont(true, 12, si.fg), fill: mkFill(si.bg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        setCell(ws1, r, 2, `${si.pct}%`, { font: mkFont(true, 10, si.fg), fill: mkFill(si.bg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        mergeAdd(m1, r, 3, r, 11);
+        setCell(ws1, r, 3, barChart(si.pct, 30), { font: mkFont(false, 10, si.fg, true), fill: mkFill(si.bg), alignment: mkAlign("left", "center"), border: mkBorder("thin", "E2E8F0") });
+        for (let c = 4; c <= 11; c++) setBlank(ws1, r, c, { fill: mkFill(si.bg), border: mkBorder("thin", "E2E8F0") });
+        r++;
+    });
+
+    ws1["!cols"] = [
+        { wch: 22 }, { wch: 9 }, { wch: 10 }, { wch: 12 }, { wch: 13 },
+        { wch: 11 }, { wch: 13 }, { wch: 18 }, { wch: 9 }, { wch: 9 }, { wch: 13 }, { wch: 11 },
     ];
+    ws1["!rows"] = [{ hpt: 30 }, { hpt: 18 }];
+    ws1["!merges"] = m1;
+    ws1["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r + 5, c: 11 } });
+    ws1["!freeze"] = { xSplit: 0, ySplit: 3 };
+    XLSX.utils.book_append_sheet(wb, ws1, "📊 Dashboard");
 
-    const headerStyle = {
-        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
-        fill: { fgColor: { rgb: "111827" } },
-        alignment: { horizontal: "center", vertical: "center" },
-        border: {
-            top: { style: "thin", color: { rgb: "334155" } },
-            bottom: { style: "thin", color: { rgb: "334155" } },
-            left: { style: "thin", color: { rgb: "334155" } },
-            right: { style: "thin", color: { rgb: "334155" } },
-        },
+    // ═══════════════════════════════════════════════════════════════
+    // SHEET 2 — ÖZET
+    // ═══════════════════════════════════════════════════════════════
+    const ws2 = {}, m2 = [];
+    let r2 = 0;
+
+    mergeAdd(m2, r2, 0, r2, 9);
+    setCell(ws2, r2, 0, "  📁  PROJE ÖZET RAPORU", {
+        font: mkFont(true, 13, clr.white), fill: mkFill(clr.dark), alignment: mkAlign("left"),
+    });
+    for (let c = 1; c <= 9; c++) setBlank(ws2, r2, c, { fill: mkFill(clr.dark) });
+    r2++;
+    r2++;
+
+    ["Bölge", "Proje", "Talep", "Tedarik", "Tedarik Edilmeyen", "Filo", "Spot", "SHÖ Basılan", "Geç Tedarik", "Performans"].forEach((h, c) => {
+        setCell(ws2, r2, c, h, {
+            font: mkFont(true, 9, clr.white), fill: mkFill(clr.headerBg),
+            alignment: mkAlign("center"), border: mkBorder("thin", clr.slate),
+        });
+    });
+    r2++;
+
+    summaries.forEach((s, idx) => {
+        const tal = Number(s.talep || 0);
+        const ted = Number(s.tedarik || 0);
+        const gec2 = Number(s.gec_tedarik || 0);
+        const zam2 = Math.max(0, ted - gec2);
+        const perf2 = tal > 0 ? Math.round((zam2 / tal) * 100) : 0;
+        const pc2 = perfColors(perf2);
+        const rb = idx % 2 === 0 ? clr.row0 : clr.row1;
+        const rs = (bg) => ({ font: mkFont(false, 10, clr.dark), fill: mkFill(bg || rb), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+
+        setCell(ws2, r2, 0, bolge || "-", rs());
+        setCell(ws2, r2, 1, s.proje || "-", { ...rs(), font: mkFont(true, 10, clr.dark2), alignment: mkAlign("left") });
+        setNum(ws2, r2, 2, tal, { ...rs(clr.blueBg), font: mkFont(true, 10, clr.blue) });
+        setNum(ws2, r2, 3, ted, { ...rs(clr.greenBg), font: mkFont(true, 10, clr.green) });
+        setNum(ws2, r2, 4, Number(s.edilmeyen || 0), rs(Number(s.edilmeyen || 0) > 0 ? clr.redBg : rb));
+        setNum(ws2, r2, 5, Number(s.filo || 0), rs());
+        setNum(ws2, r2, 6, Number(s.spot || 0), rs());
+        setNum(ws2, r2, 7, Number(s.sho_basilan || 0), rs());
+        setNum(ws2, r2, 8, gec2, { ...rs(gec2 > 0 ? clr.amberBg : rb), font: mkFont(gec2 > 0, 10, gec2 > 0 ? clr.amber : clr.dark) });
+        setCell(ws2, r2, 9, `${perf2}% ${barChart(perf2, 8)}`, {
+            font: mkFont(true, 10, pc2.fg, true), fill: mkFill(pc2.bg),
+            alignment: mkAlign("left", "center"), border: mkBorder("thin", "E2E8F0"),
+        });
+        r2++;
+    });
+
+    ws2["!cols"] = [
+        { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 10 }, { wch: 18 },
+        { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 20 },
+    ];
+    ws2["!merges"] = m2;
+    ws2["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r2 + 2, c: 9 } });
+    ws2["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 2, c: 0 }, e: { r: 2, c: 9 } }) };
+    ws2["!freeze"] = { xSplit: 0, ySplit: 3 };
+    ws2["!rows"] = [{ hpt: 26 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "📁 Özet");
+
+    // ═══════════════════════════════════════════════════════════════
+    // SHEET 3 — DETAY SEFERLER
+    // ═══════════════════════════════════════════════════════════════
+    const ws3 = {}, m3 = [];
+    let r3 = 0;
+
+    mergeAdd(m3, r3, 0, r3, 12);
+    setCell(ws3, r3, 0, "  🗂️  DETAY SEFER LİSTESİ", {
+        font: mkFont(true, 13, clr.white), fill: mkFill(clr.dark), alignment: mkAlign("left"),
+    });
+    for (let c = 1; c <= 12; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark) });
+    r3++;
+
+    mergeAdd(m3, r3, 0, r3, 12);
+    setCell(ws3, r3, 0,
+        `  Toplam ${data.length} sefer  •  Zamanında: ${zamCount}  •  Geç: ${gecCount}  •  Tarihi Yok: ${yokCount}`,
+        { font: mkFont(false, 9, clr.light), fill: mkFill(clr.dark2), alignment: mkAlign("left") }
+    );
+    for (let c = 1; c <= 12; c++) setBlank(ws3, r3, c, { fill: mkFill(clr.dark2) });
+    r3++;
+    r3++;
+
+    ["Bölge", "Proje", "Sefer No", "Talep No", "Müşteri", "Yükleme Noktası", "Teslim Noktası", "Yükleme Tarihi", "Yüklemeye Geliş", "Fark (s)", "Tedarik Durumu", "Durum", "Araç Tipi"].forEach((h, c) => {
+        setCell(ws3, r3, c, h, {
+            font: mkFont(true, 9, clr.white), fill: mkFill(clr.headerBg),
+            alignment: mkAlign("center"), border: mkBorder("thin", clr.slate),
+        });
+    });
+    r3++;
+
+    const hesaplaTedarikDurumuExcel = (row) => {
+        const seferNo = String(row?.seferNo || "").trim().toLocaleLowerCase("tr-TR");
+        const gelis = String(row?.yuklemeyeGelis || "").trim();
+        if (!gelis || gelis === "-" || seferNo.includes("planlanmadı") || seferNo.includes("planlamada")) {
+            return "Tedarik Edilemeyen";
+        }
+        if (row.durumText === "Geç Tedarik") return "Geç Tedarik";
+        return "Zamanında";
     };
 
-    const bodyStyle = {
-        font: { color: { rgb: "0F172A" }, sz: 10 },
-        alignment: { vertical: "center", wrapText: true },
-        border: {
-            bottom: { style: "thin", color: { rgb: "E5E7EB" } },
-        },
-    };
+    data.forEach((row, idx) => {
+        const rb = idx % 2 === 0 ? clr.row0 : clr.row1;
+        const rs = (bg) => ({ font: mkFont(false, 9, clr.dark), fill: mkFill(bg || rb), alignment: mkAlign("center", "center", true), border: mkBorder("thin", "E2E8F0") });
+        const durum = row.durumText || "-";
 
-    const applyModernStyle = (ws) => {
-        if (!ws["!ref"]) return;
-        const range = XLSX.utils.decode_range(ws["!ref"]);
+        let durumBg = rb, durumFg = clr.dark;
+        if (durum === "Zamanında") { durumBg = clr.greenBg; durumFg = clr.green; }
+        else if (durum === "Geç Tedarik") { durumBg = clr.redBg; durumFg = clr.red; }
+        else if (durum === "Yükleme Tarihi Yok") { durumBg = clr.amberBg; durumFg = clr.amber; }
 
-        for (let C = range.s.c; C <= range.e.c; C++) {
-            const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
-            if (ws[cellRef]) ws[cellRef].s = headerStyle;
-        }
+        const fark = row.farkSaat;
+        const farkStr = (fark === null || fark === undefined || fark === "-") ? "-"
+            : fark < 0 ? `${fark}` : fark > 0 ? `+${fark}` : "0";
+        const farkFg = fark < 0 ? "15803D" : fark > 0 ? clr.red : clr.mid;
 
-        for (let R = 1; R <= range.e.r; R++) {
-            for (let C = range.s.c; C <= range.e.c; C++) {
-                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-                if (!ws[cellRef]) continue;
-                ws[cellRef].s = {
-                    ...bodyStyle,
-                    fill: { fgColor: { rgb: R % 2 === 0 ? "F8FAFC" : "FFFFFF" } },
-                };
-            }
-        }
-    };
+        const td = hesaplaTedarikDurumuExcel(row);
+        const tdbg = td === "Zamanında" ? clr.greenBg : td === "Geç Tedarik" ? clr.redBg : clr.amberBg;
+        const tdfg = td === "Zamanında" ? clr.green : td === "Geç Tedarik" ? clr.red : clr.amber;
 
-    applyModernStyle(wsSummary);
-    applyModernStyle(wsDetail);
+        setCell(ws3, r3, 0, row.bolge || bolge || "-", rs());
+        setCell(ws3, r3, 1, row.proje || "-", { ...rs(), font: mkFont(true, 9, clr.dark2), alignment: mkAlign("left", "center", true) });
+        setCell(ws3, r3, 2, row.seferNo || "-", { ...rs(), font: mkFont(true, 9, clr.blue) });
+        setCell(ws3, r3, 3, row.talepNo || "-", rs());
+        setCell(ws3, r3, 4, row.musteri || "-", { ...rs(), alignment: mkAlign("left", "center", true) });
+        setCell(ws3, r3, 5, row.yuklemeNoktasi || getYukleme(row), { ...rs(), alignment: mkAlign("left", "center", true) });
+        setCell(ws3, r3, 6, row.teslimNoktasi || getTeslim(row), { ...rs(), alignment: mkAlign("left", "center", true) });
+        setCell(ws3, r3, 7, fmtDate(row.yuklemeTarihi), rs());
+        setCell(ws3, r3, 8, fmtDate(row.yuklemeyeGelis), rs());
+        setCell(ws3, r3, 9, farkStr, { font: mkFont(true, 10, farkStr === "-" ? clr.mid : farkFg), fill: mkFill(rb), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        setCell(ws3, r3, 10, td, { font: mkFont(true, 9, tdfg), fill: mkFill(tdbg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        setCell(ws3, r3, 11, durum, { font: mkFont(true, 9, durumFg), fill: mkFill(durumBg), alignment: mkAlign("center"), border: mkBorder("thin", "E2E8F0") });
+        setCell(ws3, r3, 12, row.aracTipi || "-", rs());
+        r3++;
+    });
 
-    const tedarikDurumuColIndex = detailRows.length
-        ? Object.keys(detailRows[0]).indexOf("Tedarik Durumu")
-        : -1;
-
-    if (tedarikDurumuColIndex >= 0 && wsDetail["!ref"]) {
-        const range = XLSX.utils.decode_range(wsDetail["!ref"]);
-
-        for (let R = 1; R <= range.e.r; R++) {
-            const cellRef = XLSX.utils.encode_cell({ r: R, c: tedarikDurumuColIndex });
-            const cell = wsDetail[cellRef];
-
-            if (cell?.v === "Geç Tedarik") {
-                cell.s = {
-                    ...cell.s,
-                    font: { bold: true, color: { rgb: "991B1B" }, sz: 10 },
-                    fill: { fgColor: { rgb: "FEE2E2" } },
-                    alignment: { horizontal: "center", vertical: "center", wrapText: true },
-                };
-            }
-
-            if (cell?.v === "Tedarik Edilemeyen") {
-                cell.s = {
-                    ...cell.s,
-                    font: { bold: true, color: { rgb: "92400E" }, sz: 10 },
-                    fill: { fgColor: { rgb: "FEF3C7" } },
-                    alignment: { horizontal: "center", vertical: "center", wrapText: true },
-                };
-            }
-        }
-    }
-
-    wsSummary["!autofilter"] = { ref: wsSummary["!ref"] };
-    wsDetail["!autofilter"] = { ref: wsDetail["!ref"] };
-    wsSummary["!freeze"] = { xSplit: 0, ySplit: 1 };
-    wsDetail["!freeze"] = { xSplit: 0, ySplit: 1 };
-    wsSummary["!rows"] = [{ hpt: 28 }];
-    wsDetail["!rows"] = [{ hpt: 28 }];
-
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Özet");
-    XLSX.utils.book_append_sheet(wb, wsDetail, "Detay Seferler");
+    ws3["!cols"] = [
+        { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 30 },
+        { wch: 24 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 9 },
+        { wch: 20 }, { wch: 18 }, { wch: 12 },
+    ];
+    ws3["!merges"] = m3;
+    ws3["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r3 + 2, c: 12 } });
+    ws3["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 3, c: 0 }, e: { r: 3, c: 12 } }) };
+    ws3["!freeze"] = { xSplit: 0, ySplit: 4 };
+    ws3["!rows"] = [{ hpt: 26 }, { hpt: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "🗂️ Detay Seferler");
 
     return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 };
