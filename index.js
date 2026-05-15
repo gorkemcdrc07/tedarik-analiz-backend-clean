@@ -718,18 +718,20 @@ const buildExcelBuffer = ({ item, bolge }) => {
     const totalTalep = summaries.reduce((a, s) => a + Number(s.talep || 0), 0);
     const totalTedarik = summaries.reduce((a, s) => a + Number(s.tedarik || 0), 0);
     const totalEdilmeyen = summaries.reduce((a, s) => a + Number(s.edilmeyen || 0), 0);
-    const totalGec = data.filter(
-        (d) => hesaplaDurumExcel(d) === "Geç Tedarik"
-    ).length;    const totalSpot = summaries.reduce((a, s) => a + Number(s.spot || 0), 0);
+
+    const durumlar = data.map((d) => hesaplaDurumExcel(d));
+
+    const totalGec = durumlar.filter((d) => d === "Geç Tedarik").length;
+
+    const totalSpot = summaries.reduce((a, s) => a + Number(s.spot || 0), 0);
+
     const totalFilo = summaries.reduce((a, s) => a + Number(s.filo || 0), 0);
     const totalSho = summaries.reduce((a, s) => a + Number(s.sho_basilan || 0), 0);
     const totalZam = Math.max(0, totalTedarik - totalGec);
     const totalPerf = totalTalep > 0 ? Math.round((totalZam / totalTalep) * 100) : 0;
     const totalShoOran = totalTedarik > 0 ? Math.round((totalSho / totalTedarik) * 100) : 0;
-    const durumlar = data.map((d) => hesaplaDurumExcel(d));
 
     const zamCount = durumlar.filter((d) => d === "Zamanında").length;
-
     const gecCount = durumlar.filter((d) => d === "Geç Tedarik").length;
 
     const yokCount = durumlar.filter(
@@ -990,7 +992,15 @@ const buildExcelBuffer = ({ item, bolge }) => {
     summaries.forEach((s, idx) => {
         const tal = Number(s.talep || 0);
         const ted = Number(s.tedarik || 0);
-        const gec2 = Number(s.gec_tedarik || 0);
+        const projeRows = data.filter(
+            (d) =>
+                String(d.proje || "").trim().toLocaleLowerCase("tr-TR") ===
+                String(s.proje || "").trim().toLocaleLowerCase("tr-TR")
+        );
+
+        const gec2 = projeRows.filter(
+            (d) => hesaplaDurumExcel(d) === "Geç Tedarik"
+        ).length;
         const zam2 = Math.max(0, ted - gec2);
         const perf2 = tal > 0 ? Math.round((zam2 / tal) * 100) : 0;
         const pc2 = perfColors(perf2);
