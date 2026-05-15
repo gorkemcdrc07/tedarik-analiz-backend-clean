@@ -928,26 +928,96 @@ const buildExcelBuffer = ({ item, bolge }) => {
     });
     r3++;
 
-    const hesaplaTedarikDurumuExcel = (row) => {
-        const seferNo = String(row?.seferNo || "").trim().toLocaleLowerCase("tr-TR");
-        const gelis = String(row?.yuklemeyeGelis || "").trim();
-        if (!gelis || gelis === "-" || seferNo.includes("planlanmadı") || seferNo.includes("planlamada")) {
-            return "Tedarik Edilemeyen";
-        }
-        if (row.durumText === "Geç Tedarik") return "Geç Tedarik";
-        return "Zamanında";
+    const isBosDeger = (v) => {
+        const s = String(v ?? "").trim();
+
+        return (
+            !s ||
+            s === "-" ||
+            s.toLowerCase() === "null" ||
+            s.toLowerCase() === "undefined"
+        );
     };
 
+    const sonrakiIsGunuSaat6 = (v) => {
+        const d = new Date(v);
+
+        if (isNaN(d.getTime())) return null;
+
+        const limit = new Date(d);
+
+        limit.setDate(limit.getDate() + 1);
+
+        while (limit.getDay() === 0 || limit.getDay() === 6) {
+            limit.setDate(limit.getDate() + 1);
+        }
+
+        limit.setHours(6, 0, 0, 0);
+
+        return limit;
+    };
+
+    const hesaplaTedarikDurumuExcel = (row) => {
+        const seferNo = String(row?.seferNo || "")
+            .trim()
+            .toLocaleLowerCase("tr-TR");
+
+        const yuklemeyeGelisBos = isBosDeger(row?.yuklemeyeGelis);
+
+        // Yüklemeye geliş boşsa
+        if (yuklemeyeGelisBos) {
+            return "Tedarik Edilemeyen";
+        }
+
+        // Sefer no planlamadaysa
+        if (seferNo.includes("planlamada")) {
+            return "Tedarik Edilemeyen";
+        }
+
+        const yuklemeTarihi = row?.yuklemeTarihi
+            ? new Date(row.yuklemeTarihi)
+            : null;
+
+        const yuklemeyeGelis = row?.yuklemeyeGelis
+            ? new Date(row.yuklemeyeGelis)
+            : null;
+
+        if (
+            !yuklemeTarihi ||
+            !yuklemeyeGelis ||
+            isNaN(yuklemeTarihi.getTime()) ||
+            isNaN(yuklemeyeGelis.getTime())
+        ) {
+            return "-";
+        }
+
+        // Yükleme tarihinden sonraki iş günü saat 06:00
+        const limit = sonrakiIsGunuSaat6(yuklemeTarihi);
+
+        if (limit && yuklemeyeGelis > limit) {
+            return "Geç Tedarik";
+        }
+
+        return "Zamanında";
+    };
     data.forEach((row, idx) => {
         const rb = idx % 2 === 0 ? clr.row0 : clr.row1;
         const rs = (bg) => ({ font: mkFont(false, 9, clr.dark), fill: mkFill(bg || rb), alignment: mkAlign("center", "center", true), border: mkBorder("thin", "E2E8F0") });
-        const durum = row.durumText || "-";
+        const durum = hesaplaTedarikDurumuExcel(row);
 
         let durumBg = rb, durumFg = clr.dark;
-        if (durum === "Zamanında") { durumBg = clr.greenBg; durumFg = clr.green; }
-        else if (durum === "Geç Tedarik") { durumBg = clr.redBg; durumFg = clr.red; }
-        else if (durum === "Yükleme Tarihi Yok") { durumBg = clr.amberBg; durumFg = clr.amber; }
-
+        if (durum === "Zamanında") {
+            durumBg = clr.greenBg;
+            durumFg = clr.green;
+        }
+        else if (durum === "Geç Tedarik") {
+            durumBg = clr.redBg;
+            durumFg = clr.red;
+        }
+        else if (durum === "Tedarik Edilemeyen") {
+            durumBg = clr.amberBg;
+            durumFg = clr.amber;
+        }
         const fark = row.farkSaat;
         const farkStr = (fark === null || fark === undefined || fark === "-") ? "-"
             : fark < 0 ? `${fark}` : fark > 0 ? `+${fark}` : "0";
